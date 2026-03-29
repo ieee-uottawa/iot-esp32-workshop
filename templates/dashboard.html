@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>IoT Live Dashboard</title>
+  <style>
+    :root {
+      --bg: #f5f8fa;
+      --panel: #ffffff;
+      --text: #17212b;
+      --muted: #5b6b7a;
+      --accent: #0f766e;
+      --accent-2: #134e4a;
+      --border: #d8e1e8;
+      --good: #166534;
+      --bad: #991b1b;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background:
+        radial-gradient(circle at top right, #daf0ec 0%, transparent 35%),
+        radial-gradient(circle at bottom left, #dbe8f5 0%, transparent 40%),
+        var(--bg);
+      color: var(--text);
+      font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+      line-height: 1.35;
+    }
+
+    .wrap {
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 20px;
+      display: grid;
+      gap: 14px;
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      box-shadow: 0 6px 20px rgba(10, 20, 30, 0.06);
+      padding: 14px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 1.6rem;
+      letter-spacing: 0.02em;
+    }
+
+    .sub {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .status {
+      font-weight: 600;
+      color: var(--good);
+    }
+
+    .status.offline {
+      color: var(--bad);
+    }
+
+    form {
+      display: grid;
+      grid-template-columns: 1fr 1fr auto;
+      gap: 10px;
+      align-items: end;
+    }
+
+    label {
+      display: block;
+      font-size: 0.85rem;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+
+    input {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-size: 0.95rem;
+    }
+
+    button {
+      border: 0;
+      border-radius: 10px;
+      padding: 10px 14px;
+      background: var(--accent);
+      color: white;
+      cursor: pointer;
+      font-weight: 600;
+      transition: transform 0.12s ease, background 0.12s ease;
+    }
+
+    button:hover {
+      background: var(--accent-2);
+      transform: translateY(-1px);
+    }
+
+    .msg {
+      margin-top: 8px;
+      min-height: 20px;
+      font-size: 0.9rem;
+      color: var(--muted);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.93rem;
+    }
+
+    th, td {
+      text-align: left;
+      padding: 10px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+
+    th {
+      color: var(--muted);
+      font-weight: 600;
+      font-size: 0.84rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    code {
+      background: #eef3f8;
+      border-radius: 6px;
+      padding: 2px 6px;
+      font-size: 0.86rem;
+    }
+
+    .empty {
+      color: var(--muted);
+      padding: 12px 0;
+    }
+
+    @media (max-width: 700px) {
+      form {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <section class="card">
+      <h1>IoT Live Dashboard</h1>
+      <div class="sub">
+        Live sensor feed from <code>sensors/+/+</code> and threshold updates to
+        <code>config/&lt;device_id&gt;/threshold</code>
+      </div>
+      <div class="sub">
+        Stream status: <span id="streamStatus" class="status offline">Disconnected</span>
+      </div>
+    </section>
+
+    <section class="card">
+      <form id="thresholdForm">
+        <div>
+          <label for="deviceId">Device ID</label>
+          <input id="deviceId" name="deviceId" placeholder="esp32_1" required>
+        </div>
+        <div>
+          <label for="threshold">Threshold</label>
+          <input id="threshold" name="threshold" type="number" step="any" placeholder="20" required>
+        </div>
+        <div>
+          <button type="submit">Set Threshold</button>
+        </div>
+      </form>
+      <div id="formMsg" class="msg"></div>
+    </section>
+
+    <section class="card">
+      <h2 style="margin: 0 0 10px 0; font-size: 1.15rem;">Latest Sensor Data</h2>
+      <div style="overflow-x: auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>Device</th>
+              <th>Sensor</th>
+              <th>Value</th>
+              <th>Threshold</th>
+              <th>Time</th>
+              <th>Topic</th>
+            </tr>
+          </thead>
+          <tbody id="dataBody"></tbody>
+        </table>
+      </div>
+      <div id="emptyState" class="empty" style="display:none;">No data received yet.</div>
+    </section>
+  </div>
+
+  <script>
+    const streamStatus = document.getElementById('streamStatus');
+    const dataBody = document.getElementById('dataBody');
+    const emptyState = document.getElementById('emptyState');
+    const thresholdForm = document.getElementById('thresholdForm');
+    const formMsg = document.getElementById('formMsg');
+
+    function renderState(state) {
+      const readings = state.readings || {};
+      const thresholds = state.thresholds || {};
+      const defaultThreshold = state.default_threshold ?? 20;
+      const rows = [];
+
+      Object.entries(readings).forEach(([deviceId, sensors]) => {
+        Object.entries(sensors).forEach(([sensorName, record]) => {
+          rows.push({
+            deviceId,
+            sensorName,
+            value: record.raw,
+            topic: record.topic,
+            time: record.received_at,
+            threshold: thresholds[deviceId] ?? defaultThreshold
+          });
+        });
+      });
+
+      rows.sort((a, b) => {
+        if (a.deviceId === b.deviceId) return a.sensorName.localeCompare(b.sensorName);
+        return a.deviceId.localeCompare(b.deviceId);
+      });
+
+      dataBody.innerHTML = '';
+
+      if (rows.length === 0) {
+        emptyState.style.display = 'block';
+        return;
+      }
+
+      emptyState.style.display = 'none';
+      rows.forEach((row) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td><strong>${escapeHtml(row.deviceId)}</strong></td>
+          <td>${escapeHtml(row.sensorName)}</td>
+          <td>${escapeHtml(String(row.value))}</td>
+          <td>${escapeHtml(String(row.threshold))}</td>
+          <td>${escapeHtml(row.time || '-')}</td>
+          <td><code>${escapeHtml(row.topic || '-')}</code></td>
+        `;
+        dataBody.appendChild(tr);
+      });
+    }
+
+    function escapeHtml(str) {
+      return str
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
+    }
+
+    async function loadInitialState() {
+      const res = await fetch('/api/state');
+      const data = await res.json();
+      renderState(data);
+    }
+
+    function connectStream() {
+      const es = new EventSource('/events');
+
+      es.onopen = () => {
+        streamStatus.textContent = 'Connected';
+        streamStatus.classList.remove('offline');
+      };
+
+      es.onmessage = (event) => {
+        try {
+          const state = JSON.parse(event.data);
+          renderState(state);
+        } catch (_err) {
+          // Ignore malformed events.
+        }
+      };
+
+      es.onerror = () => {
+        streamStatus.textContent = 'Disconnected';
+        streamStatus.classList.add('offline');
+      };
+    }
+
+    thresholdForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      formMsg.textContent = 'Sending threshold update...';
+
+      const payload = {
+        device_id: document.getElementById('deviceId').value.trim(),
+        threshold: Number(document.getElementById('threshold').value)
+      };
+
+      try {
+        const res = await fetch('/api/threshold', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          throw new Error(data.error || 'Unknown error');
+        }
+
+        formMsg.textContent = `Threshold set for ${data.device_id}: ${data.threshold}`;
+      } catch (err) {
+        formMsg.textContent = `Failed: ${err.message}`;
+      }
+    });
+
+    loadInitialState().catch(() => {
+      // Initial load failure can be recovered via SSE.
+    });
+    connectStream();
+  </script>
+</body>
+</html>
