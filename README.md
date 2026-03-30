@@ -32,6 +32,8 @@ How data flows:
 - `backend.py`: Terminal backend with commands and live table view.
 - `dashboard.py`: Flask app with live web dashboard.
 - `templates/dashboard.html`: Dashboard UI template.
+- `publish.py`: Simple MQTT publisher example (sends test messages).
+- `subscribe.py`: Simple MQTT subscriber example (prints received messages).
 - `simulator.py`: Fake ESP32 devices for local testing.
 - `run_demo.sh`: One-command launcher for simulator + backend + dashboard.
 - `stop_demo.sh`: Stops all services started by `run_demo.sh`.
@@ -96,7 +98,31 @@ sudo systemctl status mosquitto
 
 You can now use `localhost:1883` as your broker for all scripts and ESP32 devices.
 
-## Script Guide
+## `publish.py` (MQTT Publisher Example)
+
+Publishes 5 test messages to a topic on the MQTT broker (default: localhost:1883).
+
+Usage:
+
+```bash
+python publish.py
+```
+
+Edit the BROKER, PORT, and TOPIC variables in the script as needed.
+
+## `subscribe.py` (MQTT Subscriber Example)
+
+Subscribes to a topic on the MQTT broker (default: localhost:1883) and prints received messages.
+
+Usage:
+
+```bash
+python subscribe.py
+```
+
+Edit the BROKER, PORT, and TOPIC variables in the script as needed.
+
+---
 
 ## `simulator.py` (No Hardware Testing)
 
